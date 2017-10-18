@@ -8,6 +8,7 @@ library(rbokeh)
 library(DT)
 library(reshape2)
 library(rpivotTable)
+library(stringr)
 options(shiny.maxRequestSize=50*1024^2)
 # Define server logic required to draw a histogram
 shinyServer(function(input, output,session) {
@@ -18,6 +19,28 @@ shinyServer(function(input, output,session) {
   output$column=renderUI({
     selectInput('col', '待离散化列',colnames(filedata()),multiple = T)
   })
+  output$column2=renderUI({
+    selectInput('col2', '待归一取值列',colnames(filedata()),multiple = T)
+  })
+  
+  data_clean=reactive({
+    cand=filedata()
+    if (is.null(input$col2)==T){
+      cand
+    }
+    else{
+      col_clean=unlist(input$col2)
+      for (i in 1 : length(col_clean)){
+        tmp=data.frame(unlist(jsonlite::fromJSON(input$rules)),stringsAsFactors = F)
+        for (j in 1:nrow(tmp)){
+          cand[[col_clean[i]]]=str_replace_all(cand[[col_clean[i]]],pattern=rownames(tmp)[j],replacement=tmp[j,1])
+        }
+        
+      }
+      cand
+      }
+  })
+  
   findInterval_optimised=function(x,y){
     splits=as.numeric(strsplit(y,",")[[1]])
     tmp=findInterval(x,splits,left.open = T)
@@ -31,18 +54,18 @@ shinyServer(function(input, output,session) {
   
   data_categorised=reactive({
     if (is.null(input$col)==T){
-      filedata()
+      data_clean()
     }
     else{
     col_cate=unlist(input$col)
     col_cut=unlist(strsplit(input$Breaks,"\\|"))
     categorised=NULL
     for (i in 1 : length(col_cate)){
-      tmp=findInterval_optimised(filedata()[[col_cate[i]]],col_cut[i])
+      tmp=findInterval_optimised(data_clean()[[col_cate[i]]],col_cut[i])
       categorised=cbind(categorised,tmp)
     }
     colnames(categorised)=paste(unlist(input$col),"_离散化",sep="")
-    cbind(categorised,filedata())
+    cbind(categorised,data_clean())
   }
     })
   
@@ -52,7 +75,7 @@ shinyServer(function(input, output,session) {
   output$overview=renderRbokeh({
     miss <- function(x){sum(is.na(x))/length(x)}
     missingRatio=data.frame(列=colnames(filedataD()),缺失率=apply(filedataD(),2,miss),stringsAsFactors = F)
-    figure(height  =80,ylim = c(0,1),xaxes = "bottom",tools = "",ylab ="各列缺失率",xlab ="") %>% ly_bar(data = missingRatio,y=缺失率, x=列,hover = TRUE)
+    figure(height=160,width=620,ylim = c(0,1),xaxes = "bottom",tools = "",ylab ="各列缺失率",xlab ="") %>% ly_bar(data = missingRatio,y=缺失率, x=列,hover = TRUE)
   })
   output$column1=renderUI({
     selectInput('col1', '相关性检验列',colnames(filedataD()),multiple = T)
