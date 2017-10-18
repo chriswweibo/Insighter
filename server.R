@@ -15,17 +15,9 @@ shinyServer(function(input, output,session) {
     datafile=input$file
     read_excel(datafile$datapath,col_names  =T)
   })
-  
-  output$columnx=renderUI({
-    selectInput('colx', '待离散化列c1',c("无",colnames(filedata())),selected="年龄")
+  output$column=renderUI({
+    selectInput('col', '待离散化列',colnames(filedata()),multiple = T)
   })
-  output$columny=renderUI({
-    selectInput('coly', '待离散化列c2',c("无",colnames(filedata())),selected="年龄")
-  })
-  output$columnz=renderUI({
-    selectInput('colz', '待离散化列c3',c("无",colnames(filedata())),selected="年龄")
-  })
- 
   findInterval_optimised=function(x,y){
     splits=as.numeric(strsplit(y,",")[[1]])
     tmp=findInterval(x,splits,left.open = T)
@@ -36,13 +28,25 @@ shinyServer(function(input, output,session) {
     }
     return(tmp)
   }
-  data_categorised=reactive({
-    c1=findInterval_optimised(filedata()[[input$colx]],input$xBreaks)
-    c2=findInterval_optimised(filedata()[[input$coly]],input$yBreaks)
-    c3=findInterval_optimised(filedata()[[input$colz]],input$zBreaks)
-    cbind(c1,c2,c3,filedata())
-  })
   
+  data_categorised=reactive({
+    if (is.null(input$col)==T){
+      filedata()
+    }
+    else{
+    col_cate=unlist(input$col)
+    col_cut=unlist(strsplit(input$Breaks,"\\|"))
+    categorised=NULL
+    for (i in 1 : length(col_cate)){
+      tmp=findInterval_optimised(filedata()[[col_cate[i]]],col_cut[i])
+      categorised=cbind(categorised,tmp)
+    }
+    colnames(categorised)=paste(unlist(input$col),"_离散化",sep="")
+    cbind(categorised,filedata())
+  }
+    })
+  
+
   filedataD <- eventReactive(input$submit, {data_categorised()})
   
   output$overview=renderRbokeh({
@@ -50,7 +54,6 @@ shinyServer(function(input, output,session) {
     missingRatio=data.frame(列=colnames(filedataD()),缺失率=apply(filedataD(),2,miss),stringsAsFactors = F)
     figure(height  =80,ylim = c(0,1),xaxes = "bottom",tools = "",ylab ="各列缺失率",xlab ="") %>% ly_bar(data = missingRatio,y=缺失率, x=列,hover = TRUE)
   })
-  
   output$column1=renderUI({
     selectInput('col1', '相关性检验列',colnames(filedataD()),multiple = T)
   })
@@ -61,7 +64,7 @@ shinyServer(function(input, output,session) {
     dat2=filedataD()[[coln[[2]]]]
     df=na.omit(data.frame(dat1,dat2,stringsAsFactors = F))
     tmp=cor.test(df[,1],df[,2],method = input$method,alternative = input$alter)
-    result=data.frame(结果=c("关联度",round(tmp$estimate,digits=8),"p值",round(tmp$p.value,digits=8)))
+    result=data.frame(关联度=round(tmp$estimate,digits=4),p值=round(tmp$p.value,digits=4))
     }
     else{
       tmp=count_(filedataD(),c(coln[[1]],coln[[2]]))
@@ -69,13 +72,17 @@ shinyServer(function(input, output,session) {
       cand=dcast(tmp,formula,value.var="n",fill=0)[,-1]
       
       resultTmp=chisq.test(cand)
-      result=data.frame(结果=c("统计量χ方",resultTmp$statistic,"p值",resultTmp$p.value))
+      result=data.frame(χ方=round(resultTmp$statistic,digits=4),p值=round(resultTmp$p.value,digits=4))
     }
     result
    
   })
+  output$DB=renderDataTable({
+    datatable(filedataD(),filter = 'top',extensions = c('Scroller'),options=list(deferRender = F,scrollY = 520,scroller = TRUE,scrollX = TRUE,fixedColumns = F))
+  })
   output$DataPivot=renderRpivotTable({
-    filedataD() %>%  tbl_df() %>%  rpivotTable(width="20%",cols = "年龄",rows = "性别",aggregatorName = "Count",vals = "Freq",rendererName = "Stacked Bar Chart")
+    filedataD() %>%  tbl_df() %>%  rpivotTable(rendererOptions = list(
+      c3 = list()),rows = "性别",cols = "年龄",aggregatorName = "Count",vals = "Freq",rendererName = "Stacked Bar Chart")
   })
   # output$dataDistr=renderRbokeh({
   #   g= figure(width = 1600, height  = 1000, xlab=input$col, tools = tools(), title=paste(input$uvtitle,"频度分布",sep="")) 
@@ -159,9 +166,7 @@ shinyServer(function(input, output,session) {
     # 
     # })
   
-  output$DB=renderDataTable({
-    datatable(filedataD(),filter = 'top',extensions = c('Scroller'),options=list(deferRender = F,scrollY = 550,scroller = TRUE,scrollX = TRUE,fixedColumns = F))
-  })
+
  
   # rawdata=reactive({
   #   datafile=input$file
