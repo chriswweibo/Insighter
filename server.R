@@ -14,8 +14,16 @@ options(shiny.maxRequestSize=50*1024^2)
 shinyServer(function(input, output,session) {
   filedata=reactive({
     datafile=input$file
+    read_excel(datafile$datapath,col_names  =T,skip=as.integer(input$skips), n_max = as.integer(input$nmax))
+  })
+  
+  synodata=reactive({
+    datafile=input$syno
     read_excel(datafile$datapath,col_names  =T)
   })
+  
+  synodataD <- eventReactive(input$submit, {synodata()})
+  
   output$column=renderUI({
     selectInput('col', '待离散化列',colnames(filedata()),multiple = T)
   })
@@ -72,6 +80,7 @@ shinyServer(function(input, output,session) {
 
   filedataD <- eventReactive(input$submit, {data_categorised()})
   
+  
   output$overview=renderRbokeh({
     miss <- function(x){sum(is.na(x))/length(x)}
     missingRatio=data.frame(列=colnames(filedataD()),缺失率=apply(filedataD(),2,miss),stringsAsFactors = F)
@@ -103,6 +112,16 @@ shinyServer(function(input, output,session) {
   output$DB=renderDataTable({
     datatable(filedataD(),filter = 'top',extensions = c('Scroller'),options=list(deferRender = F,scrollY = 520,scroller = TRUE,scrollX = TRUE,fixedColumns = F))
   })
+  
+  output$downloadTotal<- downloadHandler(
+    filename = function() {
+      paste(Sys.Date(),"_new.xlsx", sep = "")
+    },
+    content = function(file) {
+      write.table(filedataD(), file, row.names = FALSE,quote=F,fileEncoding="UTF-8")
+    }
+  )
+  
   output$DataPivot=renderRpivotTable({
     filedataD() %>%  tbl_df() %>%  rpivotTable(rendererOptions = list(
       c3 = list()),rows = "性别",cols = "年龄",aggregatorName = "Count",vals = "Freq",rendererName = "Stacked Bar Chart")
